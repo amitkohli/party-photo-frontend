@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Party Photos</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a> |
+    <a href="/feed.html">Live Feed</a> |
+    <a href="/admin.html">Admin</a>
+  </nav>
+
+  <h1 id="partyTitle">Party Photos</h1>
+
+  <div id="uploadSection">
+    <input type="file" id="photoInput" multiple />
+    <button id="uploadBtn">Upload Photos</button>
+  </div>
+
+  <div id="photoGallery" style="margin-top: 2rem;"></div>
+
+  <script src="env.js"></script>
+  <script src="feed.js"></script>
+  <script src="photos.js"></script>
+
+  <script type="module">
+    const API_ENDPOINT = window.env.API_ENDPOINT;
+    const S3_BUCKET_URL = window.env.S3_BUCKET_URL;
+
+    const params = new URLSearchParams(window.location.search);
+    const partyName = params.get('party');
+
+    const partyTitle = document.getElementById('partyTitle');
+    const photoGallery = document.getElementById('photoGallery');
+    const photoInput = document.getElementById('photoInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    if (!partyName) {
+      partyTitle.textContent = 'No party specified.';
+      uploadBtn.disabled = true;
+    } else {
+      partyTitle.textContent = `Photos from: ${partyName}`;
+      loadPhotos();
+    }
+
+    function createImageElement(url) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.width = '200px';
+      img.style.height = '200px';
+      img.style.objectFit = 'cover';
+      img.style.margin = '10px';
+      return img;
+    }
+
+    async function loadPhotos() {
+      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${encodeURIComponent(partyName)}`);
+      const data = await res.json();
+      data.photos.forEach(photo => {
+        const url = `${S3_BUCKET_URL}/${encodeURIComponent(photo.photoKey)}`;
+        const el = createImageElement(url);
+        photoGallery.appendChild(el);
+      });
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      const files = photoInput.files;
+      for (const file of files) {
+        const res = await fetch(`${API_ENDPOINT}/get-upload-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partyName, fileName: file.name, fileType: file.type })
+        });
+        const data = await res.json();
+        if (data.uploadUrl && data.photoKey) {
+          await fetch(data.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file
+          });
+          const img = createImageElement(`${S3_BUCKET_URL}/${encodeURIComponent(data.photoKey)}`);
+          photoGallery.appendChild(img);
+        }
+      }
+      photoInput.value = '';
+    });
+  </script>
+</body>
+</html>

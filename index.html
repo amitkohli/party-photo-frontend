@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to Party Photo Share</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav>
+    <a href="/feed.html">Live Feed</a> |
+    <a href="/admin.html">Admin</a>
+  </nav>
+
+  <main>
+    <h1>🎉 Welcome to Party Photo Share</h1>
+
+    <section id="partyEntry" style="margin-top: 2rem;">
+      <label for="partyInput"><strong>Enter your party name:</strong></label>
+      <input type="text" id="partyInput" placeholder="e.g., diwali2025" />
+      <button id="goToPartyBtn">Go to Party</button>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById('goToPartyBtn').addEventListener('click', () => {
+      const party = document.getElementById('partyInput').value.trim();
+      if (party) {
+        window.location.href = `/party.html?party=${encodeURIComponent(party)}`;
+      } else {
+        alert('Please enter a valid party name.');
+      }
+    });
+  </script>
+</body>
+</html>

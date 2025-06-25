@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Photo Feed</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a> |
+    <a href="/admin.html">Admin</a>
+  </nav>
+
+  <h1>Live Feed</h1>
+
+  <div id="photoGallery"></div>
+
+  <script src="env.js"></script>
+  <script src="feed.js"></script>
+  
+  <script>
+    const API_ENDPOINT = window.env.API_ENDPOINT;
+
+    // Get partyName from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const partyName = urlParams.get('partyName');
+
+    if (!partyName) {
+      alert('Missing party name in URL');
+    }
+
+    const photoGallery = document.getElementById('photoGallery');
+
+    async function loadPhotos() {
+      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${partyName}`);
+      const photos = await res.json();
+
+      photoGallery.innerHTML = '';
+      photos.forEach(photo => {
+        const img = document.createElement('img');
+        img.src = photo.signedUrl;
+        img.alt = photo.photoKey;
+        img.style.maxWidth = '200px';
+        img.style.margin = '10px';
+        photoGallery.appendChild(img);
+      });
+    }
+
+    loadPhotos();
+    setInterval(loadPhotos, 10000); // Refresh every 10 seconds
+  </script>
+</body>
+</html>

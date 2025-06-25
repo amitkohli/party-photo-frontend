@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a> |
+    <a href="/feed.html">Live Feed</a>
+  </nav>
+
+  <h1>Admin Photo Management</h1>
+
+  <div id="partySelector">
+    <label for="partySelect">Select a Party:</label>
+    <select id="partySelect"></select>
+  </div>
+
+  <div id="uploadSection" style="margin-top: 1rem;">
+    <input type="file" id="photoInput" multiple />
+    <button id="uploadBtn">Upload Photos</button>
+  </div>
+
+  <div id="photoGallery" style="margin-top: 2rem;"></div>
+
+  <script src="env.js"></script>
+  <script type="module">
+    const API_ENDPOINT = window.env.API_ENDPOINT;
+    const S3_BUCKET_URL = window.env.S3_BUCKET_URL;
+
+    const partySelect = document.getElementById('partySelect');
+    const photoInput = document.getElementById('photoInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const photoGallery = document.getElementById('photoGallery');
+
+    let currentParty = '';
+
+    function createImageElement(url, key) {
+      const container = document.createElement('div');
+      container.style.display = 'inline-block';
+      container.style.margin = '10px';
+
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.width = '200px';
+      img.style.height = '200px';
+      img.style.objectFit = 'cover';
+
+      const btn = document.createElement('button');
+      btn.textContent = 'Delete';
+      btn.onclick = () => softDeletePhoto(currentParty, key, container);
+
+      container.appendChild(img);
+      container.appendChild(btn);
+      return container;
+    }
+
+    async function softDeletePhoto(partyName, photoKey, element) {
+      const res = await fetch(`${API_ENDPOINT}/soft-delete-photo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partyName, photoKey })
+      });
+      const result = await res.json();
+      if (result.success) {
+        element.remove();
+      } else {
+        alert('Failed to delete photo');
+      }
+    }
+
+    async function loadPhotos(partyName) {
+      photoGallery.innerHTML = '';
+      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${encodeURIComponent(partyName)}`);
+      const data = await res.json();
+      data.photos.forEach(photo => {
+        const url = `${S3_BUCKET_URL}/${encodeURIComponent(photo.photoKey)}`;
+        const el = createImageElement(url, photo.photoKey);
+        photoGallery.appendChild(el);
+      });
+    }
+
+    async function loadPartyList() {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) return;
+
+      const res = await fetch(`${API_ENDPOINT}/verify-login-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if (data.success && data.parties) {
+        data.parties.forEach(party => {
+          const option = document.createElement('option');
+          option.value = party;
+          option.textContent = party;
+          partySelect.appendChild(option);
+        });
+        currentParty = data.parties[0];
+        partySelect.value = currentParty;
+        loadPhotos(currentParty);
+      } else {
+        alert('Invalid or expired token');
+      }
+    }
+
+    partySelect.addEventListener('change', () => {
+      currentParty = partySelect.value;
+      loadPhotos(currentParty);
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const files = photoInput.files;
+      for (const file of files) {
+        const res = await fetch(`${API_ENDPOINT}/get-upload-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partyName: currentParty, fileName: file.name, fileType: file.type })
+        });
+        const data = await res.json();
+        if (data.uploadUrl && data.photoKey) {
+          await fetch(data.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file
+          });
+          const img = createImageElement(`${S3_BUCKET_URL}/${encodeURIComponent(data.photoKey)}`, data.photoKey);
+          photoGallery.appendChild(img);
+        }
+      }
+      photoInput.value = '';
+    });
+
+    loadPartyList();
+  </script>
+</body>
+</html>
