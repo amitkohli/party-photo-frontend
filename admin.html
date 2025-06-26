@@ -29,7 +29,6 @@
   <script src="env.js"></script>
   <script type="module">
     const API_ENDPOINT = window.env.API_ENDPOINT;
-    const S3_BUCKET_URL = window.env.S3_BUCKET_URL;
 
     const partySelect = document.getElementById('partySelect');
     const photoInput = document.getElementById('photoInput');
@@ -37,6 +36,10 @@
     const photoGallery = document.getElementById('photoGallery');
 
     let currentParty = '';
+    let token = new URLSearchParams(window.location.search).get('token');
+    if (!token) {
+      alert('Missing login token in URL');
+    }
 
     function createImageElement(url, key) {
       const container = document.createElement('div');
@@ -58,42 +61,38 @@
       return container;
     }
 
-    async function softDeletePhoto(partyName, photoKey, element) {
-      const res = await fetch(`${API_ENDPOINT}/soft-delete-photo`, {
+    async function softDeletePhoto(partyName, photoId, element) {
+      const res = await fetch(`${API_ENDPOINT}/delete-photo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partyName, photoKey })
+        body: JSON.stringify({ party: partyName, photoId })
       });
       const result = await res.json();
-      if (result.success) {
+      if (res.ok) {
         element.remove();
       } else {
-        alert('Failed to delete photo');
+        alert(result.message || 'Failed to delete photo');
       }
     }
 
     async function loadPhotos(partyName) {
       photoGallery.innerHTML = '';
-      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${encodeURIComponent(partyName)}`);
+      const res = await fetch(`${API_ENDPOINT}/photos?partyName=${encodeURIComponent(partyName)}`);
       const data = await res.json();
       data.photos.forEach(photo => {
-        const url = `${S3_BUCKET_URL}/${encodeURIComponent(photo.photoKey)}`;
-        const el = createImageElement(url, photo.photoKey);
+        const el = createImageElement(photo.url, photo.id);
         photoGallery.appendChild(el);
       });
     }
 
     async function loadPartyList() {
-      const token = new URLSearchParams(window.location.search).get('token');
-      if (!token) return;
-
       const res = await fetch(`${API_ENDPOINT}/verify-login-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token })
       });
       const data = await res.json();
-      if (data.success && data.parties) {
+      if (res.ok && data.parties?.length > 0) {
         data.parties.forEach(party => {
           const option = document.createElement('option');
           option.value = party;
@@ -115,23 +114,39 @@
 
     uploadBtn.addEventListener('click', async () => {
       const files = photoInput.files;
-      for (const file of files) {
-        const res = await fetch(`${API_ENDPOINT}/get-upload-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ partyName: currentParty, fileName: file.name, fileType: file.type })
-        });
-        const data = await res.json();
-        if (data.uploadUrl && data.photoKey) {
-          await fetch(data.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file
-          });
-          const img = createImageElement(`${S3_BUCKET_URL}/${encodeURIComponent(data.photoKey)}`, data.photoKey);
-          photoGallery.appendChild(img);
-        }
+      if (!currentParty || files.length === 0) return;
+
+      const fileData = Array.from(files).map(file => ({
+        fileName: file.name,
+        contentType: file.type
+      }));
+
+      const res = await fetch(`${API_ENDPOINT}/get-upload-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partyName: currentParty, files: fileData })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.uploads)) {
+        alert('Failed to get upload URLs');
+        return;
       }
+
+      for (let i = 0; i < data.uploads.length; i++) {
+        const { presignedUrl, photoKey } = data.uploads[i];
+        const file = files[i];
+
+        await fetch(presignedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file
+        });
+
+        const imgEl = createImageElement(presignedUrl.split('?')[0], photoKey);
+        photoGallery.appendChild(imgEl);
+      }
+
       photoInput.value = '';
     });
 

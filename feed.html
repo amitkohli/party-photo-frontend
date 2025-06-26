@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Live Photo Feed</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    #photoGallery {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 10px;
+      margin-top: 1rem;
+    }
+    #photoGallery img {
+      width: 200px;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+  </style>
 </head>
 <body>
   <nav>
@@ -13,38 +29,43 @@
   </nav>
 
   <h1>Live Feed</h1>
-
+  <div id="status">Loading photos...</div>
   <div id="photoGallery"></div>
 
   <script src="env.js"></script>
-  <script src="feed.js"></script>
-  
   <script>
     const API_ENDPOINT = window.env.API_ENDPOINT;
-
-    // Get partyName from URL
     const urlParams = new URLSearchParams(window.location.search);
     const partyName = urlParams.get('partyName');
+    const photoGallery = document.getElementById('photoGallery');
+    const status = document.getElementById('status');
 
     if (!partyName) {
       alert('Missing party name in URL');
+      status.textContent = '❌ Missing party name';
     }
 
-    const photoGallery = document.getElementById('photoGallery');
-
     async function loadPhotos() {
-      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${partyName}`);
-      const photos = await res.json();
+      try {
+        const res = await fetch(`${API_ENDPOINT}/photos?partyName=${encodeURIComponent(partyName)}`);
+        const data = await res.json();
 
-      photoGallery.innerHTML = '';
-      photos.forEach(photo => {
-        const img = document.createElement('img');
-        img.src = photo.signedUrl;
-        img.alt = photo.photoKey;
-        img.style.maxWidth = '200px';
-        img.style.margin = '10px';
-        photoGallery.appendChild(img);
-      });
+        photoGallery.innerHTML = '';
+        if (Array.isArray(data.photos)) {
+          data.photos.forEach(photo => {
+            const img = document.createElement('img');
+            img.src = photo.url;
+            img.alt = photo.id;
+            photoGallery.appendChild(img);
+          });
+          status.textContent = '';
+        } else {
+          status.textContent = '❌ Unexpected response format';
+        }
+      } catch (err) {
+        console.error('Failed to load photos:', err);
+        status.textContent = '❌ Failed to load photos';
+      }
     }
 
     loadPhotos();

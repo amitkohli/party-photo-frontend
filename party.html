@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Party Photos</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    #photoGallery {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 1rem;
+    }
+    #photoGallery img {
+      width: 200px;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+  </style>
 </head>
 <body>
   <nav>
@@ -20,15 +35,12 @@
     <button id="uploadBtn">Upload Photos</button>
   </div>
 
-  <div id="photoGallery" style="margin-top: 2rem;"></div>
+  <div id="status"></div>
+  <div id="photoGallery"></div>
 
   <script src="env.js"></script>
-  <script src="feed.js"></script>
-  <script src="photos.js"></script>
-
   <script type="module">
     const API_ENDPOINT = window.env.API_ENDPOINT;
-    const S3_BUCKET_URL = window.env.S3_BUCKET_URL;
 
     const params = new URLSearchParams(window.location.search);
     const partyName = params.get('party');
@@ -37,9 +49,10 @@
     const photoGallery = document.getElementById('photoGallery');
     const photoInput = document.getElementById('photoInput');
     const uploadBtn = document.getElementById('uploadBtn');
+    const status = document.getElementById('status');
 
     if (!partyName) {
-      partyTitle.textContent = 'No party specified.';
+      partyTitle.textContent = '❌ No party specified.';
       uploadBtn.disabled = true;
     } else {
       partyTitle.textContent = `Photos from: ${partyName}`;
@@ -49,43 +62,66 @@
     function createImageElement(url) {
       const img = document.createElement('img');
       img.src = url;
-      img.style.width = '200px';
-      img.style.height = '200px';
-      img.style.objectFit = 'cover';
-      img.style.margin = '10px';
       return img;
     }
 
     async function loadPhotos() {
-      const res = await fetch(`${API_ENDPOINT}/get-photos-by-party?partyName=${encodeURIComponent(partyName)}`);
-      const data = await res.json();
-      data.photos.forEach(photo => {
-        const url = `${S3_BUCKET_URL}/${encodeURIComponent(photo.photoKey)}`;
-        const el = createImageElement(url);
-        photoGallery.appendChild(el);
-      });
+      status.textContent = '📸 Loading photos...';
+      try {
+        const res = await fetch(`${API_ENDPOINT}/photos?partyName=${encodeURIComponent(partyName)}`);
+        const data = await res.json();
+        photoGallery.innerHTML = '';
+        data.photos.forEach(photo => {
+          const el = createImageElement(photo.url);
+          photoGallery.appendChild(el);
+        });
+        status.textContent = '';
+      } catch (err) {
+        console.error('Failed to load photos:', err);
+        status.textContent = '❌ Failed to load photos.';
+      }
     }
 
     uploadBtn.addEventListener('click', async () => {
       const files = photoInput.files;
-      for (const file of files) {
+      if (!files.length) return;
+
+      const uploadMeta = Array.from(files).map(file => ({
+        fileName: file.name,
+        contentType: file.type,
+      }));
+
+      try {
         const res = await fetch(`${API_ENDPOINT}/get-upload-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ partyName, fileName: file.name, fileType: file.type })
+          body: JSON.stringify({ partyName, files: uploadMeta }),
         });
+
         const data = await res.json();
-        if (data.uploadUrl && data.photoKey) {
-          await fetch(data.uploadUrl, {
+        if (!Array.isArray(data.uploads)) {
+          throw new Error('Unexpected response format');
+        }
+
+        for (let i = 0; i < data.uploads.length; i++) {
+          const { presignedUrl, photoKey } = data.uploads[i];
+          const file = files[i];
+
+          await fetch(presignedUrl, {
             method: 'PUT',
             headers: { 'Content-Type': file.type },
-            body: file
+            body: file,
           });
-          const img = createImageElement(`${S3_BUCKET_URL}/${encodeURIComponent(data.photoKey)}`);
+
+          const img = createImageElement(presignedUrl.split('?')[0]);
           photoGallery.appendChild(img);
         }
+
+        photoInput.value = '';
+      } catch (err) {
+        console.error('Upload failed:', err);
+        alert('Failed to upload photos.');
       }
-      photoInput.value = '';
     });
   </script>
 </body>

@@ -15,36 +15,6 @@
   <p id="status">Please wait...</p>
 
   <script src="env.js"></script>
-  <script src="login-token.js"></script>
-
-  <script type="module">
-    const API_ENDPOINT = window.env.API_ENDPOINT;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-
-    if (!token) {
-      document.getElementById('status').textContent = '❌ No token provided in the URL.';
-    } else {
-      fetch(`${API_ENDPOINT}/verify-login-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.parties && data.parties.length > 0) {
-          const partyName = data.parties[0];
-          window.location.href = `/${partyName}/admin`;
-        } else {
-          document.getElementById('status').textContent = '❌ Invalid or expired token.';
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('status').textContent = '❌ An error occurred while verifying the token.';
-      });
-    }
-  </script>
+  <script type="module" src="login-token.js"></script>
 </body>
 </html>
